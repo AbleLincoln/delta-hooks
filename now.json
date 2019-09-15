@@ -1,0 +1,8 @@
+{
+  "env": {
+    "GITHUB_OWNER": "@github_owner",
+    "TARGET_REPO": "@target_repo",
+    "SOURCE_REPO": "@source_repo",
+    "AUTH_KEY": "@auth_key"
+  }
+}

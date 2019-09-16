@@ -7,6 +7,8 @@ const octokit = new Octokit({
 const owner = process.env.GITHUB_OWNER;
 const repo = process.env.TARGET_REPO;
 
+const filename = file => file.split('/').pop();
+
 module.exports = async ({ body: { commits } }, res) => {
   // consolidate added, removed, and modified icons
   const addedIcons = new Set();
@@ -80,14 +82,27 @@ module.exports = async ({ body: { commits } }, res) => {
           path: file,
         })
       )
-    ).then(responses =>
-      responses.map(({ data: { name, sha } }) => ({
-        path: `icons/${name}`,
-        mode: '100755',
-        type: 'blob',
-        sha,
-      }))
-    );
+    )
+      .then(responses =>
+        Promise.all(
+          responses.map(({ data: { content } }) =>
+            octokit.git.createBlob({
+              owner,
+              repo,
+              content,
+              encoding: 'base64',
+            })
+          )
+        )
+      )
+      .then(responses =>
+        responses.map(({ data: { sha } }, i) => ({
+          path: `icons/${filename([...set][i])}`,
+          mode: '100755',
+          type: 'blob',
+          sha,
+        }))
+      );
 
   const addedIconsBlobObjects = await mapIconSetToBlobObjects(addedIcons);
   const modifiedIconsBlobObjects = await mapIconSetToBlobObjects(modifiedIcons);
@@ -108,7 +123,6 @@ module.exports = async ({ body: { commits } }, res) => {
   modifiedTree.push(...addedIconsBlobObjects);
 
   // change "modified" files
-  const filename = file => file.split('/').pop();
   modifiedTree = modifiedTree.filter(
     ({ path }) =>
       !modifiedIcons.has(`app/src/main/res/drawable-nodpi/${filename(path)}`)

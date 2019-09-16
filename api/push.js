@@ -1,15 +1,54 @@
 /* eslint-disable camelcase */
-const Octokit = require('@octokit/rest');
+const { App } = require('@octokit/app');
+const OctokitREST = require('@octokit/rest');
 
-const octokit = new Octokit({
-  auth: process.env.AUTH_KEY,
-});
-const owner = process.env.GITHUB_OWNER;
-const repo = process.env.TARGET_REPO;
+// const owner = process.env.GITHUB_OWNER;
+const targetRepo = process.env.TARGET_REPO;
 
 const filename = file => file.split('/').pop();
 
-module.exports = async ({ body: { commits } }, res) => {
+module.exports = async (
+  {
+    body: {
+      commits,
+      repository: {
+        name: sourceRepo,
+        owner: { name: owner },
+      },
+    },
+  },
+  res
+) => {
+  const octokit = new OctokitREST({
+    async auth() {
+      /*
+       * In order to authenticate as a GitHub App, we need to generate a Private Key
+       * and use it to sign a JSON Web Token (jwt) and encode it.
+       */
+      const app = new App({
+        id: process.env.APP_ID,
+        privateKey: process.env.APP_PRIVATE_KEY,
+      });
+      const jwt = app.getSignedJsonWebToken();
+
+      // Use authenticated app to GET an individual installation
+      // TODO: error handling if app not installed
+      const {
+        data: { id: installationId },
+      } = await new OctokitREST({
+        auth: jwt,
+      }).apps.getRepoInstallation({
+        owner,
+        repo: targetRepo,
+      });
+
+      const installationAccessToken = await app.getInstallationAccessToken({
+        installationId,
+      });
+      return `token ${installationAccessToken}`;
+    },
+  });
+
   // consolidate added, removed, and modified icons
   const addedIcons = new Set();
   const removedIcons = new Set();
@@ -56,7 +95,7 @@ module.exports = async ({ body: { commits } }, res) => {
     },
   } = await octokit.git.getRef({
     owner,
-    repo,
+    repo: targetRepo,
     ref: 'heads/master',
   });
 
@@ -68,7 +107,7 @@ module.exports = async ({ body: { commits } }, res) => {
     },
   } = await octokit.git.getCommit({
     owner,
-    repo,
+    repo: targetRepo,
     commit_sha,
   });
 
@@ -78,7 +117,7 @@ module.exports = async ({ body: { commits } }, res) => {
       [...set].map(file =>
         octokit.repos.getContents({
           owner,
-          repo: 'android',
+          repo: sourceRepo,
           path: file,
         })
       )
@@ -88,7 +127,7 @@ module.exports = async ({ body: { commits } }, res) => {
           responses.map(({ data: { content } }) =>
             octokit.git.createBlob({
               owner,
-              repo,
+              repo: targetRepo,
               content,
               encoding: 'base64',
             })
@@ -112,7 +151,7 @@ module.exports = async ({ body: { commits } }, res) => {
     data: { tree },
   } = await octokit.git.getTree({
     owner,
-    repo,
+    repo: targetRepo,
     tree_sha,
     recursive: 1,
   });
@@ -143,7 +182,7 @@ module.exports = async ({ body: { commits } }, res) => {
     data: { sha: new_tree_sha },
   } = await octokit.git.createTree({
     owner,
-    repo,
+    repo: targetRepo,
     tree: modifiedTree,
   });
 
@@ -152,7 +191,7 @@ module.exports = async ({ body: { commits } }, res) => {
     data: { sha: new_commit_sha },
   } = await octokit.git.createCommit({
     owner,
-    repo,
+    repo: targetRepo,
     message: 'Updated icons',
     tree: new_tree_sha,
     parents: [parent_commit_sha],
@@ -161,7 +200,7 @@ module.exports = async ({ body: { commits } }, res) => {
   // 7. Update HEAD
   const { data } = await octokit.git.updateRef({
     owner,
-    repo,
+    repo: targetRepo,
     ref: 'heads/master',
     sha: new_commit_sha,
   });

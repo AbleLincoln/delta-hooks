@@ -3,6 +3,8 @@
     "GITHUB_OWNER": "@github_owner",
     "TARGET_REPO": "@target_repo",
     "SOURCE_REPO": "@source_repo",
-    "AUTH_KEY": "@auth_key"
+    "AUTH_KEY": "@auth_key",
+    "APP_PRIVATE_KEY": "@app_private_key",
+    "APP_ID": "@app_id"
   }
 }
